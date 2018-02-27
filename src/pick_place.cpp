@@ -38,12 +38,11 @@ std::unique_ptr<actionlib::SimpleActionClient<moveit_msgs::PlaceAction>>
     place_action_client;
 
 moveit::planning_interface::MoveGroupInterface *arm;
+moveit::planning_interface::MoveGroupInterface *gripper;
 
 void spawnObject(std::string name, float x, float y, float radius,
                  float height) {
-
   moveit::planning_interface::PlanningSceneInterface psi;
-
   moveit_msgs::CollisionObject object;
 
   object.header.frame_id = "table_top";
@@ -73,29 +72,26 @@ void spawnObject(std::string name, float x, float y, float radius,
 
 void publishPlannedTrajectory(
     std::vector<moveit_msgs::RobotTrajectory> trajectories) {
-  sensor_msgs::JointState joint_state;
-  // while(ros::ok()) {
-  for (int i = 0; i < trajectories.size(); i++) {
-    for (int j = 0; j < trajectories[i].joint_trajectory.points.size(); j++) {
-      for (int k = 0; k < trajectories[i].joint_trajectory.joint_names.size();
-           k++) {
-        joint_state.name[k] = trajectories[i].joint_trajectory.joint_names[k];
-        joint_state.position[k] =
-            trajectories[i].joint_trajectory.points[j].positions[k];
-        joint_state.velocity[k] =
-            trajectories[i].joint_trajectory.points[j].velocities[k];
-        joint_state.effort[k] =
-            trajectories[i].joint_trajectory.points[j].effort[k];
+  while (ros::ok() && !current_trajectories.empty()) {
+    for (int i = 0; i < trajectories.size(); i++) {
+      for (int j = 0; j < trajectories[i].joint_trajectory.points.size(); j++) {
+        sensor_msgs::JointState joint_state;
+        for (int k = 0; k < trajectories[i].joint_trajectory.joint_names.size();
+             k++) {
+          joint_state.name.push_back(
+              trajectories[i].joint_trajectory.joint_names[k]);
+          joint_state.position.push_back(
+              trajectories[i].joint_trajectory.points[j].positions[k]);
+        }
+        planned_joint_states_publisher_ptr->publish(joint_state);
+        if (j > 0)
+          ros::Duration(
+              trajectories[i].joint_trajectory.points[j].time_from_start -
+              trajectories[i].joint_trajectory.points[j - 1].time_from_start)
+              .sleep();
       }
-      planned_joint_states_publisher_ptr->publish(joint_state);
-      if (i == 0)
-        ros::Duration(
-            trajectories[i].joint_trajectory.points[j].time_from_start -
-            trajectories[i - 1].joint_trajectory.points[j].time_from_start)
-            .sleep();
     }
   }
-  //}
 }
 
 void jointValuesToJointTrajectory(
@@ -114,11 +110,6 @@ void jointValuesToJointTrajectory(
 }
 
 moveit_msgs::Grasp generateGrasp(geometry_msgs::PointStamped msg) {
-  moveit::planning_interface::MoveGroupInterface move_group("arm");
-  moveit::planning_interface::MoveGroupInterface gripper(
-      move_group.getRobotModel()->getEndEffectors()[0]->getName());
-
-  // TODO get collision objects for radius and height
 
   moveit::planning_interface::PlanningSceneInterface psi;
   std::vector<std::string> object_ids;
@@ -129,26 +120,30 @@ moveit_msgs::Grasp generateGrasp(geometry_msgs::PointStamped msg) {
   moveit_msgs::Grasp grasp;
   grasp.id = "grasp";
 
-  jointValuesToJointTrajectory(gripper.getNamedTargetValues("open"),
+  jointValuesToJointTrajectory(gripper->getNamedTargetValues("open"),
                                ros::Duration(1.0), grasp.pre_grasp_posture);
-  jointValuesToJointTrajectory(gripper.getNamedTargetValues("closed"),
+  jointValuesToJointTrajectory(gripper->getNamedTargetValues("closed"),
                                ros::Duration(2.0), grasp.grasp_posture);
 
   geometry_msgs::PoseStamped pose;
   pose.header.frame_id = msg.header.frame_id;
-  // TODO top grasp vs side grasp
-  float w = atan2(msg.point.y, msg.point.x) - atan2(0, 1);
-  pose.pose.orientation =
-      tf::createQuaternionMsgFromRollPitchYaw(0.0, 0.0, w + M_PI);
-  pose.pose.position.x = msg.point.x;
-  pose.pose.position.y = msg.point.y;
-  pose.pose.position.z = msg.point.z;
 
-  /*
-    pose.pose.orientation = tf::createQuaternionMsgFromRollPitchYaw(M_PI/2,
-    M_PI/2, 0.0);
+  // If grasp point is on the top of the cylinder, grasp from above
+  if (msg.point.z <
+      (objects.at(msg.header.frame_id).primitives[0].dimensions[0]) / 2 -
+          0.01) {
+    float w = atan2(msg.point.y, msg.point.x) - atan2(0, 1);
+    pose.pose.orientation =
+        tf::createQuaternionMsgFromRollPitchYaw(0.0, 0.0, w + M_PI);
+    pose.pose.position.x = msg.point.x;
+    pose.pose.position.y = msg.point.y;
     pose.pose.position.z = msg.point.z;
-  */
+  } else {
+    pose.pose.orientation =
+        tf::createQuaternionMsgFromRollPitchYaw(M_PI / 2, M_PI / 2, 0.0);
+    pose.pose.position.z =
+        (objects.at(msg.header.frame_id).primitives[0].dimensions[0]) / 2;
+  }
   grasp.grasp_pose = pose;
 
   grasp.pre_grasp_approach.min_distance = 0.08;
@@ -158,8 +153,7 @@ moveit_msgs::Grasp generateGrasp(geometry_msgs::PointStamped msg) {
 
   grasp.post_grasp_retreat.min_distance = 0.08;
   grasp.post_grasp_retreat.desired_distance = 0.1;
-  grasp.post_grasp_retreat.direction.header.frame_id =
-      move_group.getPlanningFrame();
+  grasp.post_grasp_retreat.direction.header.frame_id = arm->getPlanningFrame();
   grasp.post_grasp_retreat.direction.vector.z = 1.0;
 
   tf::TransformBroadcaster br;
@@ -183,6 +177,7 @@ moveit_msgs::Grasp generateGrasp(geometry_msgs::PointStamped msg) {
 }
 
 void planCallback(const geometry_msgs::PointStamped::ConstPtr &msg) {
+  ROS_INFO("Planning pick");
 
   moveit_msgs::PickupGoal goal;
 
@@ -193,7 +188,7 @@ void planCallback(const geometry_msgs::PointStamped::ConstPtr &msg) {
   goal.possible_grasps.push_back(generateGrasp(*msg));
   goal.allowed_planning_time = 30;
   goal.allow_gripper_support_collision = true;
-  goal.planner_id = "PRMstarkConfigDefault";
+  goal.planner_id = "RRTConnectkConfigDefault";
 
   goal.planning_options.plan_only = true;
   goal.planning_options.planning_scene_diff.is_diff = true;
@@ -213,23 +208,20 @@ void planCallback(const geometry_msgs::PointStamped::ConstPtr &msg) {
     ROS_INFO("Plan found");
     current_object = msg->header.frame_id;
     success.data = true;
-    ROS_ERROR_STREAM(result.error_code);
     for (int i = 0; i < result.trajectory_stages.size(); i++)
       current_trajectories.push_back(result.trajectory_stages[i]);
-    // TODO
-    // publishPlannedTrajectory(result.trajectory_stages);
+    publishPlannedTrajectory(result.trajectory_stages);
   } else {
     ROS_INFO("No plan found");
     ROS_ERROR_STREAM(result.error_code);
     success.data = false;
   }
-  // Publish bool to signal unity if the planning was successfull
+  // Publish bool to signal unity if the planning was successfull or not
   plan_success_publisher_ptr->publish(success);
 }
 
 void executeCallback(const std_msgs::Bool::ConstPtr &msg) {
-
-  ROS_ERROR_STREAM(current_trajectories.size());
+  ROS_INFO("Execute pick");
 
   if (current_trajectories.size() > 0) {
     moveit::planning_interface::MoveGroupInterface::Plan plan;
@@ -275,18 +267,25 @@ void executeCallback(const std_msgs::Bool::ConstPtr &msg) {
       return;
     }
   }
+
+  // delete planned trajectory
+  current_trajectories.clear();
 }
 
 int main(int argc, char **argv) {
   ros::init(argc, argv, "HololensPickPlace");
-  ros::AsyncSpinner spinner(2);
+  ros::AsyncSpinner spinner(5);
   spinner.start();
   ros::NodeHandle node_handle;
 
   spawnObject("object1", 0.1, 0, 0.02, 0.2);
 
+  // Move group interfaces
   arm = new moveit::planning_interface::MoveGroupInterface("arm");
+  gripper = new moveit::planning_interface::MoveGroupInterface(
+      arm->getRobotModel()->getEndEffectors()[0]->getName());
 
+  // Action clients
   pick_action_client.reset(
       new actionlib::SimpleActionClient<moveit_msgs::PickupAction>(
           node_handle, "pickup", false));
@@ -297,6 +296,7 @@ int main(int argc, char **argv) {
           node_handle, "place", false));
   place_action_client->waitForServer();
 
+  // Subscriber and publisher
   ros::Subscriber plan_subscriber =
       node_handle.subscribe("hololens_plan_pick", 1, planCallback);
   ros::Subscriber execute_subscriber =
