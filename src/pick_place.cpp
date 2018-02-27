@@ -20,6 +20,7 @@
 #include <moveit_msgs/PlaceAction.h>
 #include <sensor_msgs/JointState.h>
 #include <std_msgs/Bool.h>
+#include <std_msgs/Empty.h>
 
 #include <actionlib/client/simple_action_client.h>
 #include <moveit/move_group_interface/move_group_interface.h>
@@ -220,7 +221,7 @@ void planCallback(const geometry_msgs::PointStamped::ConstPtr &msg) {
   plan_success_publisher_ptr->publish(success);
 }
 
-void executeCallback(const std_msgs::Bool::ConstPtr &msg) {
+void executeCallback(const std_msgs::Empty::ConstPtr &msg) {
   ROS_INFO("Execute pick");
 
   if (current_trajectories.size() > 0) {
@@ -272,6 +273,27 @@ void executeCallback(const std_msgs::Bool::ConstPtr &msg) {
   current_trajectories.clear();
 }
 
+void openGripperCallback(const std_msgs::Empty::ConstPtr &msg) {
+  ROS_INFO("Open gripper");
+
+  // Detach object
+  moveit::planning_interface::PlanningSceneInterface psi;
+  moveit_msgs::AttachedCollisionObject attached_object;
+  attached_object.object.operation = attached_object.object.REMOVE;
+  psi.applyAttachedCollisionObject(attached_object);
+
+  moveit_msgs::CollisionObject object;
+  object.id = current_object;
+  object.operation = object.REMOVE;
+  psi.applyCollisionObject(object);
+
+  current_object = "";
+
+  gripper->setNamedTarget("open");
+  if (!gripper->move())
+    ROS_ERROR("Open gripper failed");
+}
+
 int main(int argc, char **argv) {
   ros::init(argc, argv, "HololensPickPlace");
   ros::AsyncSpinner spinner(5);
@@ -301,6 +323,8 @@ int main(int argc, char **argv) {
       node_handle.subscribe("hololens_plan_pick", 1, planCallback);
   ros::Subscriber execute_subscriber =
       node_handle.subscribe("hololens_execute_pick", 1, executeCallback);
+  ros::Subscriber open_gripper_subscriber =
+      node_handle.subscribe("hololens_open_gripper", 1, openGripperCallback);
 
   planned_joint_states_publisher_ptr =
       new ros::Publisher(node_handle.advertise<sensor_msgs::JointState>(
