@@ -1,11 +1,9 @@
 /*
-  plan place
-  execute place
   error handling (no pick when object is attached...)
-
 */
 
 #include <ros/ros.h>
+#include <thread>
 
 #include <geometry_msgs/PointStamped.h>
 #include <moveit_msgs/ApplyPlanningScene.h>
@@ -41,6 +39,8 @@ moveit::planning_interface::PlanningSceneInterface* psi;
 
 bool top;
 
+std::thread* thread;
+
 void spawnObject(std::string name, float x, float y, float radius,
                  float height) {
   moveit_msgs::CollisionObject object;
@@ -70,9 +70,10 @@ void spawnObject(std::string name, float x, float y, float radius,
   psi->applyCollisionObject(object);
 }
 
+// TODO just send the full trajectory to unity
 void publishPlannedTrajectory(
     std::vector<moveit_msgs::RobotTrajectory> trajectories) {
-  //while (ros::ok() && !current_trajectories.empty()) {
+  while (ros::ok() && !current_trajectories.empty()) {
     for (int i = 0; i < trajectories.size(); i++) {
       for (int j = 0; j < trajectories[i].joint_trajectory.points.size(); j++) {
         sensor_msgs::JointState joint_state;
@@ -86,12 +87,13 @@ void publishPlannedTrajectory(
         planned_joint_states_publisher_ptr->publish(joint_state);
         if (j > 0)
           ros::Duration(
-              trajectories[i].joint_trajectory.points[j].time_from_start -
-              trajectories[i].joint_trajectory.points[j - 1].time_from_start)
+              (trajectories[i].joint_trajectory.points[j].time_from_start -
+               trajectories[i].joint_trajectory.points[j - 1].time_from_start) *
+              0.5)
               .sleep();
       }
     }
-  //}
+  }
 }
 
 void jointValuesToJointTrajectory(
@@ -111,7 +113,8 @@ void jointValuesToJointTrajectory(
 
 moveit_msgs::Grasp generateGrasp(geometry_msgs::PointStamped msg) {
 
-  std::map<std::string, moveit_msgs::CollisionObject> objects = psi->getObjects(std::vector<std::string>{msg.header.frame_id});
+  std::map<std::string, moveit_msgs::CollisionObject> objects =
+      psi->getObjects(std::vector<std::string>{msg.header.frame_id});
 
   moveit_msgs::Grasp grasp;
   grasp.id = "grasp";
@@ -154,24 +157,24 @@ moveit_msgs::Grasp generateGrasp(geometry_msgs::PointStamped msg) {
   grasp.post_grasp_retreat.direction.header.frame_id = arm->getPlanningFrame();
   grasp.post_grasp_retreat.direction.vector.z = 1.0;
 
-  tf::TransformBroadcaster br;
-  tf::Transform transform;
+  /*
+    tf::TransformBroadcaster br;
+    tf::Transform transform;
 
-  ros::Rate rate(1.0);
-  tf::Quaternion quat;
-  tf::quaternionMsgToTF(pose.pose.orientation, quat);
+    ros::Rate rate(1.0);
+    tf::Quaternion quat;
+    tf::quaternionMsgToTF(pose.pose.orientation, quat);
 
-/*
-  for (int i = 0; i < 2; i++) {
-    transform.setOrigin(tf::Vector3(pose.pose.position.x + 0.1,
-                                    pose.pose.position.y,
-                                    pose.pose.position.z + 0.1));
-    transform.setRotation(quat);
-    br.sendTransform(tf::StampedTransform(transform, ros::Time::now(),
-                                          "table_top", "grasp_point"));
-    rate.sleep();
-  }
-*/
+    for (int i = 0; i < 2; i++) {
+      transform.setOrigin(tf::Vector3(pose.pose.position.x + 0.1,
+                                      pose.pose.position.y,
+                                      pose.pose.position.z + 0.1));
+      transform.setRotation(quat);
+      br.sendTransform(tf::StampedTransform(transform, ros::Time::now(),
+                                            "table_top", "grasp_point"));
+      rate.sleep();
+    }
+  */
   return grasp;
 }
 
@@ -200,16 +203,17 @@ void planPickCallback(const geometry_msgs::PointStamped::ConstPtr &msg) {
 
   std_msgs::Bool success;
 
-  current_trajectories.clear();
-  current_object = "";
-
   if (result.error_code.val == 1) {
     ROS_INFO("Plan found");
+    current_trajectories.clear();
     current_object = msg->header.frame_id;
     success.data = true;
+    if (thread != NULL)
+      thread->join();
     for (int i = 0; i < result.trajectory_stages.size(); i++)
       current_trajectories.push_back(result.trajectory_stages[i]);
-    publishPlannedTrajectory(result.trajectory_stages);
+    thread = new std::thread(
+        std::bind(publishPlannedTrajectory, result.trajectory_stages));
   } else {
     ROS_INFO("No plan found");
     ROS_ERROR_STREAM(result.error_code);
@@ -250,17 +254,25 @@ void executePickCallback(const std_msgs::Empty::ConstPtr &msg) {
     }
 
     // Attach Object
-    std::map<std::string, moveit_msgs::CollisionObject> objects = psi->getObjects(std::vector<std::string>{current_object});
+    std::map<std::string, moveit_msgs::CollisionObject> objects =
+        psi->getObjects(std::vector<std::string>{current_object});
     moveit_msgs::AttachedCollisionObject attached_object;
     attached_object.link_name = "s_model_tool0";
     attached_object.object = objects.at(current_object);
-    attached_object.touch_links = { "s_model_finger_1_link_0",
-        "s_model_finger_1_link_1", "s_model_finger_1_link_2",
-        "s_model_finger_1_link_3", "s_model_finger_2_link_0",
-        "s_model_finger_2_link_1", "s_model_finger_2_link_2",
-        "s_model_finger_2_link_3", "s_model_finger_middle_link_0",
-        "s_model_finger_middle_link_1", "s_model_finger_middle_link_2",
-        "s_model_finger_middle_link_3", "s_model_palm", "s_model_tool0"};
+    attached_object.touch_links = {"s_model_finger_1_link_0",
+                                   "s_model_finger_1_link_1",
+                                   "s_model_finger_1_link_2",
+                                   "s_model_finger_1_link_3",
+                                   "s_model_finger_2_link_0",
+                                   "s_model_finger_2_link_1",
+                                   "s_model_finger_2_link_2",
+                                   "s_model_finger_2_link_3",
+                                   "s_model_finger_middle_link_0",
+                                   "s_model_finger_middle_link_1",
+                                   "s_model_finger_middle_link_2",
+                                   "s_model_finger_middle_link_3",
+                                   "s_model_palm",
+                                   "s_model_tool0"};
     psi->applyAttachedCollisionObject(attached_object);
 
     // retreat
@@ -295,15 +307,18 @@ void openGripperCallback(const std_msgs::Empty::ConstPtr &msg) {
     ROS_ERROR("Open gripper failed");
 }
 
-moveit_msgs::PlaceLocation generatePlaceLocation(geometry_msgs::PointStamped msg) {
+moveit_msgs::PlaceLocation
+generatePlaceLocation(geometry_msgs::PointStamped msg) {
   moveit_msgs::PlaceLocation place_location;
 
   place_location.id = "place_location";
 
-  jointValuesToJointTrajectory(gripper->getNamedTargetValues("open"), ros::Duration(1.0), place_location.post_place_posture);
+  jointValuesToJointTrajectory(gripper->getNamedTargetValues("open"),
+                               ros::Duration(1.0),
+                               place_location.post_place_posture);
 
-
-  std::map<std::string, moveit_msgs::AttachedCollisionObject> objects = psi->getAttachedObjects(std::vector<std::string>{current_object});
+  std::map<std::string, moveit_msgs::AttachedCollisionObject> objects =
+      psi->getAttachedObjects(std::vector<std::string>{current_object});
 
   // Pose for the object frame
   geometry_msgs::PoseStamped pose;
@@ -311,14 +326,16 @@ moveit_msgs::PlaceLocation generatePlaceLocation(geometry_msgs::PointStamped msg
   pose.pose.orientation.w = 1;
   pose.pose.position.x = msg.point.x;
   pose.pose.position.y = msg.point.y;
-  pose.pose.position.z = (objects.at(current_object).object.primitives[0].dimensions[0])/2 + 0.01;
+  pose.pose.position.z =
+      (objects.at(current_object).object.primitives[0].dimensions[0]) / 2 +
+      0.01;
   place_location.place_pose = pose;
 
   place_location.pre_place_approach.min_distance = 0.02;
   place_location.pre_place_approach.desired_distance = 0.1;
   place_location.pre_place_approach.direction.header.frame_id = "s_model_tool0";
 
-  // TODO top grasp vs side grasp
+  // Top grasp vs side grasp
   if (top)
     place_location.pre_place_approach.direction.vector.x = 1.0;
   else
@@ -328,7 +345,6 @@ moveit_msgs::PlaceLocation generatePlaceLocation(geometry_msgs::PointStamped msg
   place_location.post_place_retreat.desired_distance = 0.1;
   place_location.post_place_retreat.direction.header.frame_id = "table_top";
   place_location.post_place_retreat.direction.vector.z = 1.0;
-
 
   return place_location;
 }
@@ -340,14 +356,11 @@ void planPlaceCallback(const geometry_msgs::PointStamped::ConstPtr &msg) {
 
   goal.group_name = "arm";
   goal.attached_object_name = current_object;
-//  goal.end_effector = "gripper";
   goal.support_surface_name = "table_top";
   goal.place_locations.push_back(generatePlaceLocation(*msg));
   goal.allowed_planning_time = 30;
   goal.allow_gripper_support_collision = true;
   goal.planner_id = "RRTConnectkConfigDefault";
-
-  //goal.allowed_touch_objects.push_back(current_object);
 
   goal.planning_options.plan_only = true;
   goal.planning_options.planning_scene_diff.is_diff = true;
@@ -359,13 +372,17 @@ void planPlaceCallback(const geometry_msgs::PointStamped::ConstPtr &msg) {
   moveit_msgs::PlaceResult result = *(place_action_client->getResult());
 
   std_msgs::Bool success;
-  current_trajectories.clear();
 
   if (result.error_code.val == 1) {
     ROS_INFO("Plan found");
+    current_trajectories.clear();
     success.data = true;
+    if (thread != NULL)
+      thread->join();
     for (int i = 0; i < result.trajectory_stages.size(); i++)
       current_trajectories.push_back(result.trajectory_stages[i]);
+    thread = new std::thread(
+        std::bind(publishPlannedTrajectory, result.trajectory_stages));
     publishPlannedTrajectory(result.trajectory_stages);
   } else {
     ROS_INFO("No plan found");
@@ -374,7 +391,6 @@ void planPlaceCallback(const geometry_msgs::PointStamped::ConstPtr &msg) {
   }
   // Publish bool to signal unity if the planning was successfull or not
   plan_success_publisher_ptr->publish(success);
-
 }
 
 void executePlaceCallback(const std_msgs::Empty::ConstPtr &msg) {
@@ -402,17 +418,19 @@ void executePlaceCallback(const std_msgs::Empty::ConstPtr &msg) {
     }
 
     // Detach attached object
-  std::map<std::string, moveit_msgs::AttachedCollisionObject> objects = psi->getAttachedObjects(std::vector<std::string>{current_object});
-    moveit_msgs::AttachedCollisionObject attached_object = objects.at(current_object);
+    std::map<std::string, moveit_msgs::AttachedCollisionObject> objects =
+        psi->getAttachedObjects(std::vector<std::string>{current_object});
+    moveit_msgs::AttachedCollisionObject attached_object =
+        objects.at(current_object);
     moveit_msgs::CollisionObject object = attached_object.object;
 
     attached_object.object.operation = attached_object.object.REMOVE;
     psi->applyAttachedCollisionObject(attached_object);
-  
+
     // Apply Collision object
     object.operation = object.ADD;
     psi->applyCollisionObject(object);
-  
+
     current_object = "";
 
     // retreat
@@ -432,7 +450,6 @@ int main(int argc, char **argv) {
   ros::AsyncSpinner spinner(5);
   spinner.start();
   ros::NodeHandle node_handle;
-
 
   // Move group interfaces
   arm = new moveit::planning_interface::MoveGroupInterface("arm");
@@ -455,7 +472,7 @@ int main(int argc, char **argv) {
 
   // Subscriber and publisher
   ros::Subscriber plan_pick_subscriber =
-      node_handle.subscribe("hololens_plan_pick", 1, planPickCallback);
+      node_handle.subscribe("hololens_plan_pick", 2, planPickCallback);
   ros::Subscriber execute_pick_subscriber =
       node_handle.subscribe("hololens_execute_pick", 1, executePickCallback);
   ros::Subscriber open_gripper_subscriber =
