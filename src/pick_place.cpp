@@ -18,6 +18,8 @@
 #include <actionlib/client/simple_action_client.h>
 #include <moveit/move_group_interface/move_group_interface.h>
 #include <moveit/planning_scene_interface/planning_scene_interface.h>
+#include <moveit/robot_state/conversions.h>
+#include <moveit/robot_state/robot_state.h>
 #include <tf/transform_broadcaster.h>
 
 ros::Publisher *planned_joint_states_publisher_ptr;
@@ -32,14 +34,14 @@ std::unique_ptr<actionlib::SimpleActionClient<moveit_msgs::PickupAction>>
 std::unique_ptr<actionlib::SimpleActionClient<moveit_msgs::PlaceAction>>
     place_action_client;
 
-moveit::planning_interface::MoveGroupInterface* arm;
-moveit::planning_interface::MoveGroupInterface* gripper;
+moveit::planning_interface::MoveGroupInterface *arm;
+moveit::planning_interface::MoveGroupInterface *gripper;
 
-moveit::planning_interface::PlanningSceneInterface* psi;
+moveit::planning_interface::PlanningSceneInterface *psi;
 
 bool top;
 
-std::thread* thread;
+std::thread *thread;
 
 void spawnObject(std::string name, float x, float y, float radius,
                  float height) {
@@ -70,19 +72,32 @@ void spawnObject(std::string name, float x, float y, float radius,
   psi->applyCollisionObject(object);
 }
 
-// TODO just send the full trajectory to unity
 void publishPlannedTrajectory(
     std::vector<moveit_msgs::RobotTrajectory> trajectories) {
+
+  robot_state::RobotStatePtr robot_state = arm->getCurrentState();
+  sensor_msgs::JointState start_state;
+  moveit::core::robotStateToJointStateMsg(*robot_state, start_state);
+
   while (ros::ok() && !current_trajectories.empty()) {
+    sensor_msgs::JointState joint_state = start_state;
     for (int i = 0; i < trajectories.size(); i++) {
       for (int j = 0; j < trajectories[i].joint_trajectory.points.size(); j++) {
-        sensor_msgs::JointState joint_state;
         for (int k = 0; k < trajectories[i].joint_trajectory.joint_names.size();
              k++) {
-          joint_state.name.push_back(
-              trajectories[i].joint_trajectory.joint_names[k]);
-          joint_state.position.push_back(
-              trajectories[i].joint_trajectory.points[j].positions[k]);
+
+          ptrdiff_t index = std::distance(
+              joint_state.name.begin(),
+              find(joint_state.name.begin(), joint_state.name.end(),
+                   trajectories[i].joint_trajectory.joint_names[k]));
+
+          if (index < joint_state.name.size())
+            joint_state.position[index] =
+                trajectories[i].joint_trajectory.points[j].positions[k];
+          else
+            ROS_WARN_STREAM("Joint "
+                            << trajectories[i].joint_trajectory.joint_names[k]
+                            << " not found");
         }
         planned_joint_states_publisher_ptr->publish(joint_state);
         if (j > 0)
@@ -383,7 +398,6 @@ void planPlaceCallback(const geometry_msgs::PointStamped::ConstPtr &msg) {
       current_trajectories.push_back(result.trajectory_stages[i]);
     thread = new std::thread(
         std::bind(publishPlannedTrajectory, result.trajectory_stages));
-    publishPlannedTrajectory(result.trajectory_stages);
   } else {
     ROS_INFO("No plan found");
     ROS_ERROR_STREAM(result.error_code);
@@ -489,6 +503,8 @@ int main(int argc, char **argv) {
       node_handle.advertise<std_msgs::Bool>("planned_successful", 1));
 
   spawnObject("object1", 0, 0, 0.0375, 0.258);
+  spawnObject("object2", 0, -0.25, 0.0375, 0.258);
+  spawnObject("object3", 0, 0.25, 0.0375, 0.258);
 
   ros::waitForShutdown();
   return 0;
