@@ -128,10 +128,13 @@ void jointValuesToJointTrajectory(
 
 moveit_msgs::Grasp generateGrasp(geometry_msgs::PointStamped msg) {
 
+  moveit_msgs::Grasp grasp;
+
   std::map<std::string, moveit_msgs::CollisionObject> objects =
       psi->getObjects(std::vector<std::string>{msg.header.frame_id});
 
-  moveit_msgs::Grasp grasp;
+  
+
   grasp.id = "grasp";
 
   jointValuesToJointTrajectory(gripper->getNamedTargetValues("open"),
@@ -219,7 +222,7 @@ void planPickCallback(const geometry_msgs::PointStamped::ConstPtr &msg) {
   std_msgs::Bool success;
 
   if (result.error_code.val == 1) {
-    ROS_INFO("Plan found");
+    ROS_INFO_STREAM("Plan found for object " << msg->header.frame_id);
     current_trajectories.clear();
     current_object = msg->header.frame_id;
     success.data = true;
@@ -230,7 +233,7 @@ void planPickCallback(const geometry_msgs::PointStamped::ConstPtr &msg) {
     thread = new std::thread(
         std::bind(publishPlannedTrajectory, result.trajectory_stages));
   } else {
-    ROS_INFO("No plan found");
+    ROS_INFO_STREAM("No plan found for object " << msg->header.frame_id);
     ROS_ERROR_STREAM(result.error_code);
     success.data = false;
   }
@@ -503,8 +506,8 @@ int main(int argc, char **argv) {
       node_handle.advertise<std_msgs::Bool>("planned_successful", 1));
 
   spawnObject("object1", 0, 0, 0.0375, 0.258);
-  spawnObject("object2", 0, -0.25, 0.0375, 0.258);
-  spawnObject("object3", 0, 0.25, 0.0375, 0.258);
+  spawnObject("object2", 0, 0.25, 0.0375, 0.258);
+  spawnObject("object3", 0, -0.25, 0.0375, 0.258);
 
   ros::waitForShutdown();
   return 0;
