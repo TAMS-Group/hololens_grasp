@@ -11,7 +11,6 @@ find_package(catkin REQUIRED COMPONENTS
   actionlib
   moveit_msgs
   moveit_ros_planning_interface
-  tf
 )
 
 catkin_package(

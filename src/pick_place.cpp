@@ -20,7 +20,6 @@
 #include <moveit/planning_scene_interface/planning_scene_interface.h>
 #include <moveit/robot_state/conversions.h>
 #include <moveit/robot_state/robot_state.h>
-#include <tf/transform_broadcaster.h>
 
 ros::Publisher *planned_joint_states_publisher_ptr;
 ros::Publisher *plan_success_publisher_ptr;
@@ -175,24 +174,6 @@ moveit_msgs::Grasp generateGrasp(geometry_msgs::PointStamped msg) {
   grasp.post_grasp_retreat.direction.header.frame_id = arm->getPlanningFrame();
   grasp.post_grasp_retreat.direction.vector.z = 1.0;
 
-  /*
-    tf::TransformBroadcaster br;
-    tf::Transform transform;
-
-    ros::Rate rate(1.0);
-    tf::Quaternion quat;
-    tf::quaternionMsgToTF(pose.pose.orientation, quat);
-
-    for (int i = 0; i < 2; i++) {
-      transform.setOrigin(tf::Vector3(pose.pose.position.x + 0.1,
-                                      pose.pose.position.y,
-                                      pose.pose.position.z + 0.1));
-      transform.setRotation(quat);
-      br.sendTransform(tf::StampedTransform(transform, ros::Time::now(),
-                                            "table_top", "grasp_point"));
-      rate.sleep();
-    }
-  */
   return grasp;
 }
 
