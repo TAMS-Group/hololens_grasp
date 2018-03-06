@@ -1,0 +1,14 @@
+int32 val
+
+int32 SUCCESS=1
+int32 PLANNING_FAILED=-1
+int32 EXECUTING=2
+
+# States
+int32 IDLE=3
+int32 PLANNED_PICK=4
+int32 HOLD_OBJECT=5
+int32 PLANNED_PLACE=6
+
+# Error
+int32 ERROR=-99

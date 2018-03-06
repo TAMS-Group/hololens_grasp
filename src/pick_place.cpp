@@ -14,6 +14,7 @@
 #include <sensor_msgs/JointState.h>
 #include <std_msgs/Bool.h>
 #include <std_msgs/Empty.h>
+#include <hololens_grasp/State.h>
 
 #include <actionlib/client/simple_action_client.h>
 #include <moveit/move_group_interface/move_group_interface.h>
@@ -22,7 +23,7 @@
 #include <moveit/robot_state/robot_state.h>
 
 ros::Publisher *planned_joint_states_publisher_ptr;
-ros::Publisher *plan_success_publisher_ptr;
+ros::Publisher *state_publisher_ptr;
 
 std::vector<moveit_msgs::RobotTrajectory> current_trajectories;
 
@@ -39,6 +40,7 @@ moveit::planning_interface::MoveGroupInterface *gripper;
 moveit::planning_interface::PlanningSceneInterface *psi;
 
 bool top;
+hololens_grasp::State state;
 
 std::thread *thread;
 
@@ -200,13 +202,16 @@ void planPickCallback(const geometry_msgs::PointStamped::ConstPtr &msg) {
   pick_action_client->waitForResult();
   moveit_msgs::PickupResult result = *(pick_action_client->getResult());
 
-  std_msgs::Bool success;
-
   if (result.error_code.val == 1) {
     ROS_INFO_STREAM("Plan found for object " << msg->header.frame_id);
     current_trajectories.clear();
     current_object = msg->header.frame_id;
-    success.data = true;
+
+    state.val = hololens_grasp::State::SUCCESS;
+    state_publisher_ptr->publish(state);
+    state.val = hololens_grasp::State::PLANNED_PICK;
+    state_publisher_ptr->publish(state);
+
     if (thread != NULL)
       thread->join();
     for (int i = 0; i < result.trajectory_stages.size(); i++)
@@ -216,14 +221,20 @@ void planPickCallback(const geometry_msgs::PointStamped::ConstPtr &msg) {
   } else {
     ROS_INFO_STREAM("No plan found for object " << msg->header.frame_id);
     ROS_ERROR_STREAM(result.error_code);
-    success.data = false;
+    hololens_grasp::State prev_state = state;
+    state.val = hololens_grasp::State::PLANNING_FAILED;
+    state_publisher_ptr->publish(state);
+    state = prev_state;
+    state_publisher_ptr->publish(state);
   }
   // Publish bool to signal unity if the planning was successfull or not
-  plan_success_publisher_ptr->publish(success);
 }
 
 void executePickCallback(const std_msgs::Empty::ConstPtr &msg) {
   ROS_INFO("Execute pick");
+
+  state.val = hololens_grasp::State::EXECUTING;
+  state_publisher_ptr->publish(state);
 
   if (current_trajectories.size() > 0) {
     moveit::planning_interface::MoveGroupInterface::Plan plan;
@@ -284,10 +295,16 @@ void executePickCallback(const std_msgs::Empty::ConstPtr &msg) {
 
   // delete planned trajectory
   current_trajectories.clear();
+
+  state.val = hololens_grasp::State::HOLD_OBJECT;
+  state_publisher_ptr->publish(state);
 }
 
 void openGripperCallback(const std_msgs::Empty::ConstPtr &msg) {
   ROS_INFO("Open gripper");
+
+  state.val = hololens_grasp::State::EXECUTING;
+  state_publisher_ptr->publish(state);
 
   // Detach object
   moveit_msgs::AttachedCollisionObject attached_object;
@@ -304,6 +321,9 @@ void openGripperCallback(const std_msgs::Empty::ConstPtr &msg) {
   gripper->setNamedTarget("open");
   if (!gripper->move())
     ROS_ERROR("Open gripper failed");
+
+  state.val = hololens_grasp::State::IDLE;
+  state_publisher_ptr->publish(state);
 }
 
 moveit_msgs::PlaceLocation
@@ -370,12 +390,15 @@ void planPlaceCallback(const geometry_msgs::PointStamped::ConstPtr &msg) {
   place_action_client->waitForResult();
   moveit_msgs::PlaceResult result = *(place_action_client->getResult());
 
-  std_msgs::Bool success;
 
   if (result.error_code.val == 1) {
     ROS_INFO("Plan found");
+    state.val = hololens_grasp::State::SUCCESS;
+    state_publisher_ptr->publish(state);
+    state.val = hololens_grasp::State::PLANNED_PLACE;
+    state_publisher_ptr->publish(state);
+
     current_trajectories.clear();
-    success.data = true;
     if (thread != NULL)
       thread->join();
     for (int i = 0; i < result.trajectory_stages.size(); i++)
@@ -385,14 +408,19 @@ void planPlaceCallback(const geometry_msgs::PointStamped::ConstPtr &msg) {
   } else {
     ROS_INFO("No plan found");
     ROS_ERROR_STREAM(result.error_code);
-    success.data = false;
+    hololens_grasp::State prev_state = state;
+    state.val = hololens_grasp::State::PLANNING_FAILED;
+    state_publisher_ptr->publish(state);
+    state = prev_state;
+    state_publisher_ptr->publish(state);
   }
-  // Publish bool to signal unity if the planning was successfull or not
-  plan_success_publisher_ptr->publish(success);
 }
 
 void executePlaceCallback(const std_msgs::Empty::ConstPtr &msg) {
   ROS_INFO("Execute place");
+
+  state.val = hololens_grasp::State::EXECUTING;
+  state_publisher_ptr->publish(state);
 
   if (current_trajectories.size() > 0) {
     moveit::planning_interface::MoveGroupInterface::Plan plan;
@@ -441,6 +469,9 @@ void executePlaceCallback(const std_msgs::Empty::ConstPtr &msg) {
 
   // delete planned trajectory
   current_trajectories.clear();
+
+  state.val = hololens_grasp::State::IDLE;
+  state_publisher_ptr->publish(state);
 }
 
 int main(int argc, char **argv) {
@@ -470,21 +501,24 @@ int main(int argc, char **argv) {
 
   // Subscriber and publisher
   ros::Subscriber plan_pick_subscriber =
-      node_handle.subscribe("hololens_plan_pick", 2, planPickCallback);
+      node_handle.subscribe("hololens/plan_pick", 2, planPickCallback);
   ros::Subscriber execute_pick_subscriber =
-      node_handle.subscribe("hololens_execute_pick", 1, executePickCallback);
+      node_handle.subscribe("hololens/execute_pick", 1, executePickCallback);
   ros::Subscriber open_gripper_subscriber =
-      node_handle.subscribe("hololens_open_gripper", 1, openGripperCallback);
+      node_handle.subscribe("hololens/open_gripper", 1, openGripperCallback);
   ros::Subscriber plan_place_subscriber =
-      node_handle.subscribe("hololens_plan_place", 1, planPlaceCallback);
+      node_handle.subscribe("hololens/plan_place", 1, planPlaceCallback);
   ros::Subscriber execute_place_subscriber =
-      node_handle.subscribe("hololens_execute_place", 1, executePlaceCallback);
+      node_handle.subscribe("hololens/execute_place", 1, executePlaceCallback);
 
   planned_joint_states_publisher_ptr =
       new ros::Publisher(node_handle.advertise<sensor_msgs::JointState>(
-          "planned_joint_states", 1));
-  plan_success_publisher_ptr = new ros::Publisher(
-      node_handle.advertise<std_msgs::Bool>("planned_successful", 1));
+          "hololens/planned_joint_states", 1));
+  state_publisher_ptr = new ros::Publisher(
+      node_handle.advertise<hololens_grasp::State>("hololens/state", 1, true));
+
+  state.val = hololens_grasp::State::IDLE;
+  state_publisher_ptr->publish(state);
 
   spawnObject("object1", 0, 0, 0.0375, 0.258);
   spawnObject("object2", 0, 0.25, 0.0375, 0.258);
