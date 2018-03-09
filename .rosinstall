@@ -1,0 +1,36 @@
+- git:
+    local-name: tams/tams_ur5
+    uri: https://github.com/TAMS-Group/tams_ur5
+- git:
+    local-name: tams/tams_ur5_setup
+    uri: https://github.com/TAMS-Group/tams_ur5_setup
+- git:
+    local-name: tams/tams_ur5_pick_place
+    uri: https://github.com/TAMS-Group/tams_ur5_pick_place.git
+- git:
+    local-name: tams/camera_positioner
+    uri: https://github.com/TAMS-Group/camera_positioner.git
+- git:
+    local-name: tams/robotiq_s_model_action_server
+    uri: https://github.com/TAMS-Group/robotiq_s_model_action_server.git
+- git:
+    local-name: upstream/ur_modern_driver
+    uri: https://github.com/Zagitta/ur_modern_driver
+- git:
+    local-name: upstream/industrial_core
+    uri: https://github.com/ros-industrial/industrial_core.git
+- git:
+    local-name: upstream/universal_robot
+    uri: https://github.com/ros-industrial/universal_robot.git
+    version: kinetic-devel
+- git:
+    local-name: upstream/robotiq
+    uri: https://github.com/TAMS-Group/robotiq.git
+    version: kinetic-devel_bluetooth
+- git:
+    local-name: upstream/apriltags_ros
+    uri: https://github.com/RIVeR-Lab/apriltags_ros.git
+    version: indigo-devel
+- git:
+    local-name: hololens_grasp
+    uri: https://github.com/TAMS-Group/hololens_grasp.git
