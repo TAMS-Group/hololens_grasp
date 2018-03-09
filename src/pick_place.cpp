@@ -127,14 +127,17 @@ void jointValuesToJointTrajectory(
   grasp_pose.points[0].time_from_start = duration;
 }
 
-moveit_msgs::Grasp generateGrasp(geometry_msgs::PointStamped msg) {
-
-  moveit_msgs::Grasp grasp;
+std::vector<moveit_msgs::Grasp> generateGrasp(geometry_msgs::PointStamped msg) {
 
   std::map<std::string, moveit_msgs::CollisionObject> objects =
       psi->getObjects(std::vector<std::string>{msg.header.frame_id});
 
-  
+  if (objects.size() == 0) {
+    ROS_ERROR_STREAM("Object " << msg.header.frame_id << " not found");
+    return std::vector<moveit_msgs::Grasp>{};
+  }
+
+  moveit_msgs::Grasp grasp;
 
   grasp.id = "grasp";
 
@@ -176,7 +179,7 @@ moveit_msgs::Grasp generateGrasp(geometry_msgs::PointStamped msg) {
   grasp.post_grasp_retreat.direction.header.frame_id = arm->getPlanningFrame();
   grasp.post_grasp_retreat.direction.vector.z = 1.0;
 
-  return grasp;
+  return std::vector<moveit_msgs::Grasp>{grasp};
 }
 
 void planPickCallback(const geometry_msgs::PointStamped::ConstPtr &msg) {
@@ -188,10 +191,13 @@ void planPickCallback(const geometry_msgs::PointStamped::ConstPtr &msg) {
   goal.group_name = "arm";
   goal.end_effector = "gripper";
   goal.support_surface_name = "table_top";
-  goal.possible_grasps.push_back(generateGrasp(*msg));
   goal.allowed_planning_time = 30;
   goal.allow_gripper_support_collision = true;
   goal.planner_id = "RRTConnectkConfigDefault";
+
+  goal.possible_grasps = generateGrasp(*msg);
+  if (goal.possible_grasps.size() == 0)
+    return;
 
   goal.planning_options.plan_only = true;
   goal.planning_options.planning_scene_diff.is_diff = true;
