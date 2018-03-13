@@ -248,24 +248,32 @@ void executePickCallback(const std_msgs::Empty::ConstPtr &msg) {
     plan.trajectory_ = current_trajectories[0];
     if (!arm->execute(plan)) {
       ROS_ERROR("Movement to pre grasp pose failed");
+      state.val = hololens_grasp::State::ERROR;
+      state_publisher_ptr->publish(state);
       return;
     }
     // open gripper
     plan.trajectory_ = current_trajectories[1];
     if (!arm->execute(plan)) {
       ROS_ERROR("Open gripper failed");
+      state.val = hololens_grasp::State::ERROR;
+      state_publisher_ptr->publish(state);
       return;
     }
     // cartesion movement to object
     plan.trajectory_ = current_trajectories[2];
     if (!arm->execute(plan)) {
       ROS_ERROR("Movement to grasp pose failed");
+      state.val = hololens_grasp::State::ERROR;
+      state_publisher_ptr->publish(state);
       return;
     }
     // close gripper
     plan.trajectory_ = current_trajectories[3];
     if (!arm->execute(plan)) {
       ROS_ERROR("Close gripper failed");
+      state.val = hololens_grasp::State::ERROR;
+      state_publisher_ptr->publish(state);
       return;
     }
 
@@ -295,6 +303,8 @@ void executePickCallback(const std_msgs::Empty::ConstPtr &msg) {
     plan.trajectory_ = current_trajectories[4];
     if (!arm->execute(plan)) {
       ROS_ERROR("Retreat failed");
+      state.val = hololens_grasp::State::ERROR;
+      state_publisher_ptr->publish(state);
       return;
     }
   }
@@ -434,18 +444,24 @@ void executePlaceCallback(const std_msgs::Empty::ConstPtr &msg) {
     plan.trajectory_ = current_trajectories[0];
     if (!arm->execute(plan)) {
       ROS_ERROR("Movement to pre place pose failed");
+      state.val = hololens_grasp::State::ERROR;
+      state_publisher_ptr->publish(state);
       return;
     }
     // cartesian movement to place pose
     plan.trajectory_ = current_trajectories[1];
     if (!arm->execute(plan)) {
       ROS_ERROR("Cartesian movement failed");
+      state.val = hololens_grasp::State::ERROR;
+      state_publisher_ptr->publish(state);
       return;
     }
     // Open gripper
     plan.trajectory_ = current_trajectories[2];
     if (!arm->execute(plan)) {
       ROS_ERROR("Open gripepr failed");
+      state.val = hololens_grasp::State::ERROR;
+      state_publisher_ptr->publish(state);
       return;
     }
 
@@ -469,6 +485,8 @@ void executePlaceCallback(const std_msgs::Empty::ConstPtr &msg) {
     plan.trajectory_ = current_trajectories[3];
     if (!arm->execute(plan)) {
       ROS_ERROR("Retreat failed");
+      state.val = hololens_grasp::State::ERROR;
+      state_publisher_ptr->publish(state);
       return;
     }
   }
