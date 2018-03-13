@@ -499,8 +499,22 @@ void executePlaceCallback(const std_msgs::Empty::ConstPtr &msg) {
 }
 
 void resetCallback(const std_msgs::Empty::ConstPtr &msg) {
-  spawnObject("object1", 0, -0.25, 0.0375, 0.258);
-  spawnObject("object2", -0.25, 0.25, 0.0375, 0.258);
+  // Detach attached object
+  std::map<std::string, moveit_msgs::AttachedCollisionObject> objects =
+      psi->getAttachedObjects(std::vector<std::string>{current_object});
+
+  if (objects.size() > 0) {
+    moveit_msgs::AttachedCollisionObject attached_object =
+        objects.at(current_object);
+
+    attached_object.object.operation = attached_object.object.REMOVE;
+    psi->applyAttachedCollisionObject(attached_object);
+
+  current_object = "";
+  }
+
+  spawnObject("object1", -0.25, 0.25, 0.0375, 0.258);
+  spawnObject("object2", 0, -0.25, 0.0375, 0.258);
   spawnObject("object3", 0.25, -0.25, 0.0375, 0.258);
 }
 
@@ -553,8 +567,8 @@ int main(int argc, char **argv) {
   state.val = hololens_grasp::State::IDLE;
   state_publisher_ptr->publish(state);
 
-  spawnObject("object1", 0, -0.25, 0.0375, 0.258);
-  spawnObject("object2", -0.25, -0.25, 0.0375, 0.258);
+  spawnObject("object1", -0.25, -0.25, 0.0375, 0.258);
+  spawnObject("object2", 0, -0.25, 0.0375, 0.258);
   spawnObject("object3", 0.25, -0.25, 0.0375, 0.258);
 
   ros::waitForShutdown();
