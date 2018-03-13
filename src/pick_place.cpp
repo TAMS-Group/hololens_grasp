@@ -498,6 +498,13 @@ void executePlaceCallback(const std_msgs::Empty::ConstPtr &msg) {
   state_publisher_ptr->publish(state);
 }
 
+void resetCallback(const std_msgs::Empty::ConstPtr &msg) {
+  spawnObject("object1", 0, -0.25, 0.0375, 0.258);
+  spawnObject("object2", -0.25, 0.25, 0.0375, 0.258);
+  spawnObject("object3", 0.25, -0.25, 0.0375, 0.258);
+}
+
+
 int main(int argc, char **argv) {
   ros::init(argc, argv, "HololensPickPlace");
   ros::AsyncSpinner spinner(5);
@@ -534,6 +541,8 @@ int main(int argc, char **argv) {
       node_handle.subscribe("hololens/plan_place", 1, planPlaceCallback);
   ros::Subscriber execute_place_subscriber =
       node_handle.subscribe("hololens/execute_place", 1, executePlaceCallback);
+  ros::Subscriber reset_subscriber =
+      node_handle.subscribe("hololens/reset", 1, resetCallback);
 
   planned_joint_states_publisher_ptr =
       new ros::Publisher(node_handle.advertise<sensor_msgs::JointState>(
@@ -544,9 +553,9 @@ int main(int argc, char **argv) {
   state.val = hololens_grasp::State::IDLE;
   state_publisher_ptr->publish(state);
 
-  spawnObject("object1", 0, 0, 0.0375, 0.258);
-  spawnObject("object2", 0, 0.25, 0.0375, 0.258);
-  spawnObject("object3", 0, -0.25, 0.0375, 0.258);
+  spawnObject("object1", 0, -0.25, 0.0375, 0.258);
+  spawnObject("object2", -0.25, -0.25, 0.0375, 0.258);
+  spawnObject("object3", 0.25, -0.25, 0.0375, 0.258);
 
   ros::waitForShutdown();
   return 0;
