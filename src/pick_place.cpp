@@ -378,8 +378,8 @@ generatePlaceLocation(geometry_msgs::PointStamped msg) {
 
   place_location.post_place_retreat.min_distance = 0.02;
   place_location.post_place_retreat.desired_distance = 0.1;
-  place_location.post_place_retreat.direction.header.frame_id = "table_top";
-  place_location.post_place_retreat.direction.vector.z = 1.0;
+  place_location.post_place_retreat.direction.header.frame_id = "s_model_tool0";
+  place_location.post_place_retreat.direction.vector.x = -1.0;
 
   return place_location;
 }
