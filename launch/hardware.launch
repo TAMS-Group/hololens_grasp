@@ -3,4 +3,6 @@
   <include file="$(find tams_ur5_setup_bringup)/launch/tams_ur5_setup.launch">
     <arg name="ur5_joint_ranges_config" value="$(find tams_ur5_description)/config/joint_ranges/elbow_up.yaml"/>
   </include>
+
+  <node name="hololens_pick_place" pkg="hololens_grasp" type="pick_place" />
 </launch>

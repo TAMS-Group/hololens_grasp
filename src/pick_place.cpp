@@ -1,7 +1,3 @@
-/*
-  error handling (no pick when object is attached...)
-*/
-
 #include <ros/ros.h>
 #include <thread>
 
@@ -107,6 +103,10 @@ void publishPlannedTrajectory(
                trajectories[i].joint_trajectory.points[j - 1].time_from_start) *
               0.5)
               .sleep();
+
+      // return if new planning is requested, in this case the current trajectory is empty
+      if (current_trajectories.empty())
+        return;
       }
     }
   }
