@@ -142,7 +142,7 @@ std::vector<moveit_msgs::Grasp> generateGrasp(geometry_msgs::PointStamped msg) {
   grasp.id = "grasp";
 
   jointValuesToJointTrajectory(gripper->getNamedTargetValues("open"),
-                               ros::Duration(1.0), grasp.pre_grasp_posture);
+                               ros::Duration(2.0), grasp.pre_grasp_posture);
   jointValuesToJointTrajectory(gripper->getNamedTargetValues("closed"),
                                ros::Duration(2.0), grasp.grasp_posture);
 
@@ -193,7 +193,7 @@ void planPickCallback(const geometry_msgs::PointStamped::ConstPtr &msg) {
   goal.support_surface_name = "table_top";
   goal.allowed_planning_time = 30;
   goal.allow_gripper_support_collision = true;
-  goal.planner_id = "RRTConnectkConfigDefault";
+  goal.planner_id = "RRTstartkConfigDefault";
 
   goal.possible_grasps = generateGrasp(*msg);
   if (goal.possible_grasps.size() == 0)
@@ -339,7 +339,7 @@ generatePlaceLocation(geometry_msgs::PointStamped msg) {
   place_location.id = "place_location";
 
   jointValuesToJointTrajectory(gripper->getNamedTargetValues("open"),
-                               ros::Duration(1.0),
+                               ros::Duration(2.0),
                                place_location.post_place_posture);
 
   std::map<std::string, moveit_msgs::AttachedCollisionObject> objects =
