@@ -519,7 +519,7 @@ void resetCallback(const std_msgs::Empty::ConstPtr &msg) {
   }
 
 
-  spawnObject("object1", -0.25, 0.25, 0.0375, 0.258);
+  spawnObject("object1", -0.25, -0.25, 0.0375, 0.258);
   spawnObject("object2", 0, -0.25, 0.0375, 0.258);
   spawnObject("object3", 0.25, -0.25, 0.0375, 0.258);
 
