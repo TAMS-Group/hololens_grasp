@@ -233,7 +233,6 @@ void planPickCallback(const geometry_msgs::PointStamped::ConstPtr &msg) {
     state = prev_state;
     state_publisher_ptr->publish(state);
   }
-  // Publish bool to signal unity if the planning was successfull or not
 }
 
 void executePickCallback(const std_msgs::Empty::ConstPtr &msg) {
@@ -504,8 +503,10 @@ void resetCallback(const std_msgs::Empty::ConstPtr &msg) {
       psi->getAttachedObjects(std::vector<std::string>{current_object});
 
   current_trajectories.clear();
-  if (thread != NULL)
+  if (thread != NULL) {
     thread->join();
+    thread = NULL;
+  }
 
   if (objects.size() > 0) {
     moveit_msgs::AttachedCollisionObject attached_object =
